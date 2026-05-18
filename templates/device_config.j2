@@ -1,0 +1,155 @@
+hostname {{ device.hostname }}
+no ip domain-lookup
+ip cef
+{% if device.role in ["p", "pe"] %}
+mpls label protocol ldp
+mpls ldp router-id Loopback0 force
+{% if provider.rsvp.enabled %}
+mpls traffic-eng tunnels
+ip rsvp signalling hello
+{% endif %}
+{% endif %}
+!
+{% if device.role == "pe" and device.vrfs %}
+{% for vrf in device.vrfs %}
+ip vrf {{ vrf.name }}
+ rd {{ vrf.rd }}
+{% for rt in vrf.import_rts %}
+ route-target import {{ rt }}
+{% endfor %}
+{% for rt in vrf.export_rts %}
+ route-target export {{ rt }}
+{% endfor %}
+!
+{% endfor %}
+{% endif %}
+interface Loopback0
+ ip address {{ device.loopback0.ip }} {{ device.loopback0.mask }}
+{% if device.role in ["p", "pe"] %}
+ ip ospf {{ provider.ospf_process }} area 0
+{% endif %}
+ no shutdown
+!
+{% for interface in device.interfaces %}
+interface {{ interface.name }}
+ description {{ interface.description }}
+{% if interface.vrf %}
+ ip vrf forwarding {{ interface.vrf }}
+{% endif %}
+ ip address {{ interface.ip }} {{ interface.mask }}
+{% if interface.ospf %}
+ ip ospf {{ provider.ospf_process }} area 0
+{% endif %}
+{% if interface.mpls %}
+ mpls ip
+{% endif %}
+{% if interface.rsvp %}
+ ip rsvp bandwidth {{ provider.rsvp.bandwidth }}
+ mpls traffic-eng tunnels
+{% endif %}
+ no shutdown
+!
+{% endfor %}
+{% if device.te_tunnels %}
+{% for tunnel in device.te_tunnels %}
+interface Tunnel{{ tunnel.number }}
+ description {{ tunnel.name }}
+ ip unnumbered Loopback0
+ tunnel mode mpls traffic-eng
+ tunnel destination {{ tunnel.destination }}
+ tunnel mpls traffic-eng autoroute announce
+ tunnel mpls traffic-eng priority 7 7
+ tunnel mpls traffic-eng bandwidth {{ tunnel.bandwidth }}
+ tunnel mpls traffic-eng path-option {{ tunnel.path_option.value }} {{ tunnel.path_option.type }}
+ no shutdown
+!
+{% endfor %}
+{% endif %}
+{% if device.prefix_lists %}
+{% for prefix_list in device.prefix_lists %}
+ip prefix-list {{ prefix_list.name }} seq {{ prefix_list.seq }} permit {{ prefix_list.prefix }}
+{% endfor %}
+!
+{% endif %}
+{% if device.route_maps %}
+{% for route_map in device.route_maps %}
+route-map {{ route_map.name }} permit {{ route_map.sequence }}
+{% if route_map.match_prefix_list %}
+ match ip address prefix-list {{ route_map.match_prefix_list }}
+{% endif %}
+{% if route_map.set_local_preference %}
+ set local-preference {{ route_map.set_local_preference }}
+{% endif %}
+{% if route_map.set_med %}
+ set metric {{ route_map.set_med }}
+{% endif %}
+!
+{% endfor %}
+{% endif %}
+{% if device.role in ["p", "pe"] %}
+router ospf {{ provider.ospf_process }}
+ router-id {{ device.router_id }}
+ passive-interface Loopback0
+{% if provider.rsvp.enabled %}
+ mpls traffic-eng router-id Loopback0
+ mpls traffic-eng area 0
+{% endif %}
+!
+{% endif %}
+{% if device.role in ["pe", "p"] %}
+router bgp {{ provider.asn }}
+ bgp log-neighbor-changes
+ bgp router-id {{ device.router_id }}
+{% if device.role == "pe" %}
+{% for peer in device.ibgp_neighbors %}
+ neighbor {{ peer.ip }} remote-as {{ provider.asn }}
+ neighbor {{ peer.ip }} update-source Loopback0
+{% endfor %}
+ !
+ address-family vpnv4
+{% for peer in device.ibgp_neighbors %}
+  neighbor {{ peer.ip }} activate
+  neighbor {{ peer.ip }} send-community both
+{% endfor %}
+ exit-address-family
+{% for vrf in device.vrfs %}
+ !
+ address-family ipv4 vrf {{ vrf.name }}
+{% for peer in vrf.ce_neighbors %}
+  neighbor {{ peer.ip }} remote-as {{ peer.asn }}
+  neighbor {{ peer.ip }} activate
+{% if peer.route_map_in %}
+  neighbor {{ peer.ip }} route-map {{ peer.route_map_in }} in
+{% endif %}
+{% if peer.route_map_out %}
+  neighbor {{ peer.ip }} route-map {{ peer.route_map_out }} out
+{% endif %}
+{% endfor %}
+ exit-address-family
+{% endfor %}
+{% endif %}
+!
+{% endif %}
+{% if device.role == "ce" %}
+router bgp {{ device.asn }}
+ bgp log-neighbor-changes
+ bgp router-id {{ device.router_id }}
+{% for neighbor in device.bgp.neighbors %}
+ neighbor {{ neighbor.ip }} remote-as {{ neighbor.asn }}
+{% endfor %}
+ !
+ address-family ipv4
+{% for neighbor in device.bgp.neighbors %}
+  neighbor {{ neighbor.ip }} activate
+{% endfor %}
+{% for network in device.advertised_networks %}
+  network {{ network.network }} mask {{ network.mask }}
+{% endfor %}
+ exit-address-family
+!
+{% endif %}
+line vty 0 4
+ login local
+ transport input ssh
+!
+end
