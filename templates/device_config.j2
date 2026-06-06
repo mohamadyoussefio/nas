@@ -12,6 +12,9 @@ ip rsvp signalling hello
 !
 {% if device.role == "pe" and device.vrfs %}
 {% for vrf in device.vrfs %}
+{% if vrf.state == 'absent' %}
+no ip vrf {{ vrf.name }}
+{% else %}
 ip vrf {{ vrf.name }}
  rd {{ vrf.rd }}
 {% for rt in vrf.import_rts %}
@@ -20,6 +23,7 @@ ip vrf {{ vrf.name }}
 {% for rt in vrf.export_rts %}
  route-target export {{ rt }}
 {% endfor %}
+{% endif %}
 !
 {% endfor %}
 {% endif %}
@@ -120,6 +124,9 @@ router bgp {{ provider.asn }}
  !
  address-family ipv4 vrf {{ vrf.name }}
 {% for peer in vrf.ce_neighbors %}
+{% if peer.state == 'absent' %}
+  no neighbor {{ peer.ip }}
+{% else %}
   neighbor {{ peer.ip }} remote-as {{ peer.asn }}
   neighbor {{ peer.ip }} activate
 {% if peer.route_map_in %}
@@ -127,6 +134,7 @@ router bgp {{ provider.asn }}
 {% endif %}
 {% if peer.route_map_out %}
   neighbor {{ peer.ip }} route-map {{ peer.route_map_out }} out
+{% endif %}
 {% endif %}
 {% endfor %}
  exit-address-family
