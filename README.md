@@ -1,101 +1,88 @@
-# BGP/MPLS VPN Intent-Based Automation Framework
+# BGP/MPLS VPN Intent Automation Framework 🚀
 
 [![Infrastructure: GNS3](https://img.shields.io/badge/Infrastructure-GNS3-blue.svg)](https://www.gns3.com/)
 [![Language: Python](https://img.shields.io/badge/Language-Python-yellow.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## 1. Summary
+Welcome to the **BGP/MPLS VPN Automation Framework**. This project is designed to make building a Carrier-Grade Service Provider backbone as simple as running a single command. 
 
-This framework provides an enterprise-grade Model-Driven Automation solution for provisioning and managing Carrier-Grade BGP/MPLS VPN backbones. By utilizing an Infrastructure-as-Code (IaC) methodology, the system automates the entire network lifecycle—from initial topology synchronization to advanced Traffic Engineering and multi-tenant service delivery.
-
----
-
-## 2. Design
-
-The framework is built upon a modular Model-Template-Execution architecture to ensure scalability and maintainability.
-
-### 2.1 The Data Model
-The central source of truth resides in `inventory/intent.yaml`. This declarative model defines the desired state of the network, including core infrastructure (P/PE routers), customer edge (CE) nodes, VRF definitions, RSVP-TE tunnel parameters, and shared service policies.
-
-### 2.2 Configuration Blueprints
-Jinja2 templates located in `templates/device_config.j2` serve as the logical engine for generating vendor-specific configurations. These templates incorporate complex networking logic to transform abstract intent into syntactically correct Cisco IOS commands.
-
-### 2.3 Orchestration Engine
-The Python-based logic in `scripts/` handles the enrichment of the data model, performs rigorous IP integrity validation, and interacts with the GNS3 REST API to manage the virtual environment.
+Whether you are a student or a network engineer, this tool automates the complex "under-the-hood" math of MPLS, BGP, and Traffic Engineering so you can focus on the architecture.
 
 ---
 
-## 3. Prerequisites
+## ✨ Features at a Glance
 
-Successful deployment requires the Cisco 7200 router appliance within the GNS3 environment.
+*   **One-Click Lab:** Automatically creates your GNS3 topology, wires the nodes, and boots the routers.
+*   **Carrier-Grade Core:** Fully automated OSPFv2, MPLS LDP, and VPNv4 iBGP.
+*   **Advanced Services:** Support for Shared Internet VRFs and multi-tenant Site Sharing.
+*   **Traffic Engineering:** Automated RSVP-TE tunnels with bandwidth reservations.
+*   **Smart Manageability:** True declarative management—add or delete prefixes and VRFs with zero "ghost configs."
 
-*   **Appliance Download:** [Cisco 7200 Template](https://gns3.com/marketplace/appliances/cisco-7200)
-*   **Documentation:** [Cisco 7200 Installation Tutorial](https://gns3.com/marketplace/appliances/cisco-7200)
+---
 
-### 3.1 Template Configuration Guidance
+## 🛠️ Step 1: Pre-Flight Checklist
 
-The following settings must be applied to the Cisco 7200 template to ensure full compatibility with the automation engine.
+To ensure the automation works perfectly, you need the **Cisco 7200** template in GNS3.
 
-#### Figure 1: General Router Settings
+1.  **Download:** [Cisco 7200 Appliance](https://gns3.com/marketplace/appliances/cisco-7200)
+2.  **Install:** Follow the [GNS3 Tutorial](https://gns3.com/marketplace/appliances/cisco-7200)
+3.  **Verify Settings:** Match your template to the figures below:
+
+#### Figure 1: General Settings
 ![General Router Settings](assets/router_settings_general.png)
 
-#### Figure 2: Memory and Disk Allocation
+#### Figure 2: Memories and Disk
 ![Memory and Disk Allocation](assets/router_settings_memories_and_disk.png)
 
-#### Figure 3: Interface Slot Configuration
+#### Figure 3: Slot Configuration
 ![Interface Slot Configuration](assets/router_settings_slots.png)
 
 ---
 
-## 4. Operational Quick Start
+## ⚡ Step 2: One-Minute Setup
 
-The system utilizes a unified `Makefile` to provide a simplified interface for complex orchestration tasks.
+We've provided a `Makefile` to handle all the "boring" parts. Just run these commands in your terminal:
 
-### 4.1 Environment Initialization
-Prepare the Python virtual environment and install required dependencies:
+### **1. Prepare your machine**
+This creates a virtual environment and installs all the Python "brains."
 ```bash
 make setup
 ```
 
-### 4.2 Full System Deployment
-Synchronize the GNS3 topology and deploy the comprehensive network configuration:
+### **2. Build and Deploy**
+Ensure GNS3 is open, then run this to build the entire 8-node network from scratch.
 ```bash
 make build
 ```
 
-### 4.3 Lifecycle Management Demonstration
-Execute the automated demonstration of Add, Update, and Delete operations:
+### **3. The "Magic" Demo**
+Once the lab is running, see how the network adapts to changes (Add/Update/Delete) automatically.
 ```bash
 make demo
 ```
 
 ---
 
-## 5. Project Implementation Phases
+## 📐 How it Works (The "Boring" Tech Stuff)
 
-The project was developed through a rigorous engineering cycle consisting of six distinct phases:
+The framework follows a **Model-Driven** approach. You describe *what* you want in a simple YAML file, and the engine handles the *how*.
 
-| Phase | Scope | Technical Components |
-| :--- | :--- | :--- |
-| Phase 0 | Network Underlay | OSPFv2, Loopback addressing, P2P IP allocation |
-| Phase 1 | MPLS Core | LDP Label Distribution, Label switching paths |
-| Phase 2 | VPN Control Plane | Multi-protocol iBGP, VPNv4 Address Family |
-| Phase 3 | Service Layer | VRF instantiation, eBGP PE-CE peering |
-| Phase 4.a | Manageability | Declarative deletion logic (`state: absent`), State synchronization |
-| Phase 4.b | Advanced Services | RSVP-TE, Shared Internet VRF, Ingress Path Steering |
+| Component | Function |
+| :--- | :--- |
+| **`intent.yaml`** | Your "Order Form." Define your routers, links, and VRFs here. |
+| **`automation_lib.py`** | The "Enrichment Engine." Calculates BGP neighbors, labels, and RTs. |
+| **`device_config.j2`** | The "Blueprint." A Jinja2 template that writes the Cisco IOS code. |
+| **`build_lab.py`** | The "Robot." Talks to GNS3 to build and configure the lab. |
 
 ---
 
-## 6. Directory Structure
+## 📂 File Structure
 
-```text
-├── inventory/      # Declarative Data Models
-├── scripts/        # Automation & Orchestration Logic
-├── templates/      # Jinja2 Configuration Blueprints
-├── assets/         # Technical Figures and Visual Guides
-├── output/         # Generated Production Configurations
-└── Makefile        # System Command Interface
-```
+*   `inventory/` - Your network definitions (Single source of truth).
+*   `scripts/` - The automation logic and UI/UX code.
+*   `templates/` - Cisco IOS configuration blueprints.
+*   `output/` - Where the final production-ready configs are saved.
 
 ---
-**Technical documentation developed for the 3TC(A) NAS Project.**
+**Developed for the 3TC(A) NAS Project.**
+*Automating the complexity out of networking.*
