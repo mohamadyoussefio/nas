@@ -9,275 +9,70 @@ import time
 from pathlib import Path
 from typing import Any
 
-import requests # type: ignore
-
-from automation_lib import build_context, deploy_configs, load_yaml, render_configs, validate_intent, write_configs
+import requests
+from automation_lib import build_context, load_yaml, render_configs, validate_intent, write_configs
 
 
 class GNS3Client:
-    def __init__(self, base_url: str, timeout: int = 30) -> None:
+    def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
-        self.session = requests.Session()
-        self.timeout = timeout
 
-    def get(self, path: str) -> Any:
-        response = self.session.get(f"{self.base_url}{path}", timeout=self.timeout)
-        response.raise_for_status()
-        return response.json()
-
-    def post(self, path: str, payload: Any | None = None, raw: str | None = None) -> Any:
-        kwargs: dict[str, Any] = {"timeout": self.timeout}
-        if raw is not None:
-            kwargs["data"] = raw.encode("utf-8")
-            kwargs["headers"] = {"Content-Type": "application/octet-stream"}
-        elif payload is not None:
-            kwargs["json"] = payload
-        response = self.session.post(f"{self.base_url}{path}", **kwargs)
-        try:
-            response.raise_for_status()
-        except requests.HTTPError as exc:
-            body = response.text.strip()
-            detail = f" Response body: {body}" if body else ""
-            raise requests.HTTPError(f"{exc}.{detail}", response=response) from exc
-        if response.content:
-            return response.json()
-        return None
-
-    def delete(self, path: str) -> None:
-        response = self.session.delete(f"{self.base_url}{path}", timeout=self.timeout)
-        try:
-            response.raise_for_status()
-        except requests.HTTPError as exc:
-            body = response.text.strip()
-            detail = f" Response body: {body}" if body else ""
-            raise requests.HTTPError(f"{exc}.{detail}", response=response) from exc
-
-
-def ensure_project(client: GNS3Client, project_name: str) -> dict[str, Any]:
-    for project in client.get("/v2/projects"):
-        if project["name"] == project_name:
-            return project
-    return client.post("/v2/projects", {"name": project_name})
-
-
-def reset_project(client: GNS3Client, project_name: str) -> None:
-    for project in client.get("/v2/projects"):
-        if project["name"] == project_name:
-            client.delete(f"/v2/projects/{project['project_id']}")
-            print(f"Deleted existing GNS3 project: {project_name}")
-            return
-
-
-def get_templates_by_name(client: GNS3Client) -> dict[str, dict[str, Any]]:
-    return {template["name"]: template for template in client.get("/v2/templates")}
-
-
-def get_existing_nodes(client: GNS3Client, project_id: str) -> dict[str, dict[str, Any]]:
-    return {node["name"]: node for node in client.get(f"/v2/projects/{project_id}/nodes")}
-
-
-def ensure_nodes(
-    client: GNS3Client,
-    project_id: str,
-    gns3: dict[str, Any],
-    templates: dict[str, dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    existing = get_existing_nodes(client, project_id)
-    created = dict(existing)
-
-    for device_name, node_data in gns3["nodes"].items():
-        if device_name in created:
-            continue
-
-        template_alias = node_data["template"]
-        template_name = gns3["templates"][template_alias]["name"]
-        if template_name not in templates:
-            raise ValueError(
-                f"GNS3 template '{template_name}' referenced by alias '{template_alias}' does not exist on the controller"
-            )
-
-        template = templates[template_name]
-        payload = {
-            "compute_id": node_data.get("compute_id", gns3.get("compute_id", template.get("compute_id", "local"))),
-            "name": device_name,
-            "x": node_data["x"],
-            "y": node_data["y"],
-        }
-        created[device_name] = client.post(f"/v2/projects/{project_id}/templates/{template['template_id']}", payload)
-
-    return created
-
-
-def ensure_links(client: GNS3Client, project_id: str, nodes: dict[str, dict[str, Any]], gns3: dict[str, Any]) -> None:
-    existing_links = client.get(f"/v2/projects/{project_id}/links")
-    existing_signatures = {_link_signature(link, nodes_by_id={node["node_id"]: name for name, node in nodes.items()}) for link in existing_links}
-    used_ports = {
-        (nodes_by_id[endpoint["node_id"]], endpoint["adapter_number"], endpoint["port_number"])
-        for link in existing_links
-        for endpoint in link["nodes"]
-        for nodes_by_id in [{node["node_id"]: name for name, node in nodes.items()}]
-    }
-
-    for link in gns3.get("links", []):
-        signature = _intent_link_signature(link)
-        if signature in existing_signatures:
-            continue
-        if any((endpoint["device"], endpoint["adapter_number"], endpoint["port_number"]) in used_ports for endpoint in link["endpoints"]):
-            print(f"Skipping link {signature} because one of its ports is already in use")
-            continue
-
-        endpoints = []
-        for endpoint in link["endpoints"]:
-            node = nodes[endpoint["device"]]
-            _validate_node_port(endpoint["device"], node, endpoint["adapter_number"], endpoint["port_number"])
-            endpoints.append(
-                {
-                    "node_id": node["node_id"],
-                    "adapter_number": endpoint["adapter_number"],
-                    "port_number": endpoint["port_number"],
-                }
-            )
-        client.post(f"/v2/projects/{project_id}/links", {"nodes": endpoints})
-        used_ports.update(
-            (endpoint["device"], endpoint["adapter_number"], endpoint["port_number"])
-            for endpoint in link["endpoints"]
-        )
-
-
-def _validate_node_port(device_name: str, node: dict[str, Any], adapter_number: int, port_number: int) -> None:
-    ports = node.get("ports", [])
-    for port in ports:
-        if port.get("adapter_number") == adapter_number and port.get("port_number") == port_number:
-            return
-
-    available = sorted((port.get("adapter_number"), port.get("port_number")) for port in ports)
-    raise ValueError(
-        f"Node {device_name} does not expose port {adapter_number}/{port_number}. "
-        f"Available ports: {available}"
-    )
-
-
-def _link_signature(link: dict[str, Any], nodes_by_id: dict[str, str]) -> tuple[tuple[str, int, int], tuple[str, int, int]]:
-    endpoints = []
-    for endpoint in link["nodes"]:
-        endpoints.append(
-            (
-                nodes_by_id[endpoint["node_id"]],
-                endpoint["adapter_number"],
-                endpoint["port_number"],
-            )
-        )
-    return tuple(sorted(endpoints))
-
-
-def _intent_link_signature(link: dict[str, Any]) -> tuple[tuple[str, int, int], tuple[str, int, int]]:
-    endpoints = []
-    for endpoint in link["endpoints"]:
-        endpoints.append((endpoint["device"], endpoint["adapter_number"], endpoint["port_number"]))
-    return tuple(sorted(endpoints))
-
-
-def start_nodes(client: GNS3Client, project_id: str) -> None:
-    client.post(f"/v2/projects/{project_id}/nodes/start")
+    def request(self, method: str, path: str, json: Any = None) -> Any:
+        url = f"{self.base_url}/v2{path}"
+        resp = requests.request(method, url, json=json)
+        if resp.status_code >= 400:
+            try:
+                error = resp.json().get("message", resp.text)
+            except Exception:
+                error = resp.text
+            raise RuntimeError(f"GNS3 API error ({resp.status_code}): {error}")
+        return resp.json() if resp.text else None
 
 
 class TelnetConsoleClient:
-    IAC = 255
-    DONT = 254
-    DO = 253
-    WONT = 252
-    WILL = 251
-
-    def __init__(self, host: str, port: int, timeout: int = 5) -> None:
+    def __init__(self, host: str, port: int, timeout: float = 120.0):
         self.host = host
         self.port = port
         self.timeout = timeout
         self.sock: socket.socket | None = None
 
-    def __enter__(self) -> "TelnetConsoleClient":
+    def __enter__(self) -> TelnetConsoleClient:
         self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
-        self.sock.settimeout(self.timeout)
         return self
 
-    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self.sock:
             self.sock.close()
 
-    def _recv_processed(self, timeout: float = 1.0) -> str:
+    def send_line(self, line: str) -> None:
         if not self.sock:
-            return ""
-        self.sock.settimeout(timeout)
-        chunks = bytearray()
-        end_time = time.time() + timeout
-        while time.time() < end_time:
-            try:
-                data = self.sock.recv(4096)
-            except socket.timeout:
-                break
-            if not data:
-                break
-            chunks.extend(self._process_telnet_bytes(data))
-        return chunks.decode("utf-8", errors="ignore")
+            raise RuntimeError("Console client not connected")
+        self.sock.sendall(line.encode("ascii") + b"\r\n")
 
-    def _process_telnet_bytes(self, data: bytes) -> bytes:
+    def wait_for_prompt(self, prompts: tuple[str, ...], wait_seconds: float = 30.0) -> str:
         if not self.sock:
-            return b""
-        output = bytearray()
-        idx = 0
-        while idx < len(data):
-            byte = data[idx]
-            if byte == self.IAC and idx + 1 < len(data):
-                cmd = data[idx + 1]
-                if cmd == self.IAC:
-                    output.append(self.IAC)
-                    idx += 2
-                    continue
-                if idx + 2 < len(data):
-                    opt = data[idx + 2]
-                    if cmd in (self.DO, self.DONT):
-                        self.sock.sendall(bytes([self.IAC, self.WONT, opt]))
-                    elif cmd in (self.WILL, self.WONT):
-                        self.sock.sendall(bytes([self.IAC, self.DONT, opt]))
-                    idx += 3
-                    continue
-            output.append(byte)
-            idx += 1
-        return bytes(output)
-
-    def send_line(self, line: str = "") -> None:
-        if not self.sock:
-            return
-        self.sock.sendall((line + "\r\n").encode("utf-8"))
-
-    def wait_for_prompt(self, prompts: tuple[str, ...], wait_seconds: float = 8.0) -> str:
-        deadline = time.time() + wait_seconds
+            raise RuntimeError("Console client not connected")
+        start = time.time()
         output = ""
-        while time.time() < deadline:
-            output += self._recv_processed(timeout=0.5)
-            lowered = output.lower()
-            if "initial configuration dialog" in lowered:
-                self.send_line("no")
-            if "would you like to terminate autoinstall" in lowered:
-                self.send_line("yes")
-            if "[confirm]" in output or "overwrite the previous nvram configuration?" in lowered:
-                self.send_line("")
-                output = ""
-                continue
-            if any(prompt in output for prompt in prompts):
+        while time.time() - start < wait_seconds:
+            data = self.sock.recv(4096).decode("ascii", errors="ignore")
+            output += data
+            if any(p in output for p in prompts):
                 return output
+            time.sleep(0.5)
         raise TimeoutError(f"Did not receive prompt {prompts} from console {self.host}:{self.port}. Last output: {output[-400:]}")
 
-    def expect_ready(self, wait_seconds: int = 120) -> None:
-        deadline = time.time() + wait_seconds
-        while time.time() < deadline:
+    def expect_ready(self, wait_seconds: int = 180) -> None:
+        start = time.time()
+        while time.time() - start < wait_seconds:
             self.send_line("")
-            output = self._recv_processed(timeout=2.0)
-            lowered = output.lower()
-            if "initial configuration dialog" in lowered:
-                self.send_line("no")
+            try:
+                output = self.wait_for_prompt((">", "#", "yes/no", "initial configuration dialog"), wait_seconds=5.0)
+            except TimeoutError:
                 continue
-            if "press return to get started" in lowered:
-                self.send_line("")
+            lowered = output.lower()
+            if "initial configuration dialog" in lowered or "[yes/no]" in lowered:
+                self.send_line("no")
                 continue
             if "would you like to terminate autoinstall" in lowered:
                 self.send_line("yes")
@@ -291,32 +86,115 @@ class TelnetConsoleClient:
 
     def run_commands(self, commands: list[str], save_config: bool = True) -> None:
         self.send_line("")
-        self.wait_for_prompt((">", "#"), wait_seconds=5.0)
+        self.wait_for_prompt((">", "#"), wait_seconds=30.0)
+        self.send_line("end")
+        self.wait_for_prompt(("#", ">"), wait_seconds=5.0)
         self.send_line("enable")
         self.wait_for_prompt(("#",), wait_seconds=5.0)
         self.send_line("terminal length 0")
         self.wait_for_prompt(("#",), wait_seconds=5.0)
         self.send_line("configure terminal")
-        self.wait_for_prompt(("(config)#",), wait_seconds=5.0)
+        self.wait_for_prompt(("(config", "#"), wait_seconds=5.0)
         for command in commands:
-            if not command or command == "end":
+            if not command or command.strip() == "!" or command == "end":
                 continue
-            self.send_line(command)
-            if command == "!":
-                continue
-            if command.startswith("interface "):
-                self.wait_for_prompt(("(config-if)#", "(config)#"), wait_seconds=5.0)
-            elif command.startswith("router "):
-                self.wait_for_prompt(("(config-router)#", "(config)#"), wait_seconds=5.0)
-            elif command.startswith("address-family "):
-                self.wait_for_prompt(("(config-router-af)#", "(config)#", "(config-router)#"), wait_seconds=5.0)
-            else:
-                self.wait_for_prompt(("(config", "#"), wait_seconds=5.0)
+            self.send_line(command.strip())
+            time.sleep(0.5)
+            self.wait_for_prompt(("#", ">"), wait_seconds=10.0)
         self.send_line("end")
         self.wait_for_prompt(("#",), wait_seconds=5.0)
         if save_config:
             self.send_line("write memory")
-            self.wait_for_prompt(("#", "[ok]"), wait_seconds=15.0)
+            self.wait_for_prompt(("#", "[ok]"), wait_seconds=60.0)
+
+
+def get_existing_nodes(client: GNS3Client, project_id: str) -> dict[str, dict[str, Any]]:
+    nodes = client.request("GET", f"/projects/{project_id}/nodes")
+    return {n["name"]: n for n in nodes}
+
+
+def ensure_project(client: GNS3Client, name: str) -> dict[str, Any]:
+    projects = client.request("GET", "/projects")
+    for p in projects:
+        if p["name"] == name:
+            return p
+    return client.request("POST", "/projects", json={"name": name})
+
+
+def reset_project(client: GNS3Client, name: str) -> None:
+    projects = client.request("GET", "/projects")
+    for p in projects:
+        if p["name"] == name:
+            client.request("DELETE", f"/projects/{p['project_id']}")
+            print(f"Deleted existing GNS3 project: {name}")
+
+
+def get_templates_by_name(client: GNS3Client) -> dict[str, dict[str, Any]]:
+    templates = client.request("GET", "/templates")
+    return {t["name"]: t for n, t in templates.items()} if isinstance(templates, dict) else {t["name"]: t for t in templates}
+
+
+def ensure_nodes(client: GNS3Client, project_id: str, gns3_intent: dict[str, Any], templates: dict[str, dict[str, Any]]) -> dict[str, str]:
+    existing = get_existing_nodes(client, project_id)
+    node_name_to_id = {}
+
+    for name, node_data in gns3_intent["nodes"].items():
+        if name in existing:
+            node_name_to_id[name] = existing[name]["node_id"]
+            continue
+        template_name = gns3_intent["templates"][node_data["template"]]["name"]
+        template = templates.get(template_name)
+        if not template:
+            raise ValueError(f"Template '{template_name}' not found in GNS3")
+        node = client.request("POST", f"/projects/{project_id}/nodes", json={
+            "name": name,
+            "node_type": template["node_type"],
+            "compute_id": gns3_intent.get("compute_id", "local"),
+            "x": node_data["x"],
+            "y": node_data["y"],
+            "template_id": template["template_id"]
+        })
+        node_name_to_id[name] = node["node_id"]
+
+    return node_name_to_id
+
+
+def ensure_links(client: GNS3Client, project_id: str, nodes: dict[str, str], gns3_intent: dict[str, Any]) -> None:
+    existing_links = client.request("GET", f"/projects/{project_id}/links")
+    for link_data in gns3_intent.get("links", []):
+        endpoints = link_data["endpoints"]
+        node_a_id = nodes[endpoints[0]["device"]]
+        node_b_id = nodes[endpoints[1]["device"]]
+        
+        link_exists = False
+        for ex in existing_links:
+            e = ex["nodes"]
+            if {e[0]["node_id"], e[1]["node_id"]} == {node_a_id, node_b_id}:
+                link_exists = True
+                break
+        if not link_exists:
+            client.request("POST", f"/projects/{project_id}/links", json={
+                "nodes": [
+                    {"node_id": node_a_id, "adapter_number": endpoints[0]["adapter_number"], "port_number": endpoints[0]["port_number"]},
+                    {"node_id": node_b_id, "adapter_number": endpoints[1]["adapter_number"], "port_number": endpoints[1]["port_number"]}
+                ]
+            })
+
+
+def start_nodes(client: GNS3Client, project_id: str) -> None:
+    client.request("POST", f"/projects/{project_id}/nodes/start", json={})
+
+
+def wait_after_boot(seconds: int) -> None:
+    if seconds > 0:
+        print(f"Waiting for nodes to stabilize...")
+        for i in range(seconds, 0, -1):
+            width = 40
+            progress = int((seconds - i) / seconds * width)
+            bar = "█" * progress + "░" * (width - progress)
+            print(f"\r[{bar}] {i: >3}s remaining ", end="", flush=True)
+            time.sleep(1)
+        print(f"\r[{'█' * 40}] Boot sequence complete!   \n")
 
 
 def deploy_configs_via_gns3_console(
@@ -326,7 +204,9 @@ def deploy_configs_via_gns3_console(
     wait_seconds: int = 180,
 ) -> None:
     nodes = get_existing_nodes(client, project_id)
-    for name, config in rendered.items():
+    total = len(rendered)
+    print("Initializing deployment pipeline...")
+    for i, (name, config) in enumerate(rendered.items(), 1):
         if name not in nodes:
             raise ValueError(f"Device {name} does not exist in project {project_id}")
         node = nodes[name]
@@ -334,17 +214,17 @@ def deploy_configs_via_gns3_console(
         console_port = node.get("console")
         if console_port is None:
             raise ValueError(f"Device {name} does not expose a console port in GNS3")
-        print(f"Deploying config to {name} via GNS3 console {console_host}:{console_port}")
+
+        progress = int((i / total) * 20)
+        bar = "█" * progress + "░" * (20 - progress)
+        print(f"[{bar}] {i}/{total} | Provisioning: {name: <6}", end="\r", flush=True)
+        
         commands = [line for line in config.splitlines() if line and line != "end"]
         with TelnetConsoleClient(console_host, int(console_port)) as console:
             console.expect_ready(wait_seconds=wait_seconds)
-            console.run_commands(commands)
-
-
-def wait_after_boot(seconds: int) -> None:
-    if seconds > 0:
-        print(f"Waiting {seconds} seconds for nodes to boot")
-        time.sleep(seconds)
+            console.run_commands(commands, save_config=True)
+    
+    print(f"\nFinalized deployment for all {total} infrastructure nodes.")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -405,7 +285,7 @@ def main() -> None:
     if args.deploy:
         if args.deploy_method == "gns3-console":
             if not client or not project_id:
-                raise ValueError("GNS3 project context is required for console deployment")
+                raise RuntimeError("Client or project_id not initialized")
             deploy_configs_via_gns3_console(
                 client,
                 project_id,
@@ -413,12 +293,8 @@ def main() -> None:
                 wait_seconds=gns3.get("console_wait_seconds", 120) if gns3 else 120,
             )
         else:
+            from automation_lib import deploy_configs
             deploy_configs(context, rendered)
-
-    if not args.write_files and not args.create and not args.start and not args.deploy:
-        for name, config in rendered.items():
-            print(f"\n===== {name} =====")
-            print(config)
 
 
 if __name__ == "__main__":
