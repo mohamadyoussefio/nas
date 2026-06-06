@@ -156,6 +156,11 @@ def _iface_to_dict(cidr: str) -> dict[str, str]:
 
 def _normalize_interface(interface: dict[str, Any]) -> dict[str, Any]:
     normalized = deepcopy(interface)
+    normalized["state"] = interface.get("state", "present")
+    
+    if normalized["state"] == "absent":
+        return normalized
+
     parsed = parse_ipv4(interface["ipv4"])
     normalized["cidr"] = parsed.cidr
     normalized["ip"] = parsed.ip
@@ -188,6 +193,7 @@ def _get_or_create_vrf(device: dict[str, Any], vrf_name: str, vrf_source: dict[s
         "import_rts": vrf_source.get("import_rts", []),
         "export_rts": vrf_source.get("export_rts", []),
         "ce_neighbors": [],
+        "state": vrf_source.get("state", "present")
     }
     device["vrfs"].append(vrf)
     return vrf
@@ -227,7 +233,8 @@ def validate_intent(intent: dict[str, Any]) -> None:
 
         parse_ipv4(device["loopback0"])
         for interface in device.get("interfaces", []):
-            parse_ipv4(interface["ipv4"])
+            if interface.get("state") != "absent":
+                parse_ipv4(interface["ipv4"])
 
         if role == "ce":
             bgp = device.get("bgp", {})
@@ -272,13 +279,22 @@ def validate_gns3_intent(intent: dict[str, Any]) -> None:
 def _check_duplicate_ips(devices: dict[str, Any]) -> None:
     seen: dict[str, str] = {}
     for name, device in devices.items():
-        addresses = [device["loopback0"]] + [iface["ipv4"] for iface in device.get("interfaces", [])]
-        for cidr in addresses:
-            ip = str(ipaddress.ip_interface(cidr).ip)
+        # Get all interfaces except those being deleted
+        # Note: at validation stage, loopback0 is still a raw CIDR string
+        ifaces = [{"name": "loopback0", "ipv4": device["loopback0"]}] + \
+                 [iface for iface in device.get("interfaces", []) if iface.get("state") != "absent"]
+        
+        for iface in ifaces:
+            ip = str(ipaddress.ip_interface(iface["ipv4"]).ip)
             owner = seen.get(ip)
-            if owner:
+            
+            # Allow duplicates ONLY if it's a Loopback (Anycast scenario)
+            is_loopback = "loopback" in iface.get("name", "").lower()
+            if owner and not is_loopback:
                 raise ValueError(f"Duplicate IP {ip} on {owner} and {name}")
-            seen[ip] = name
+            
+            if not owner:
+                seen[ip] = name
 
 
 def render_configs(context: dict[str, Any]) -> dict[str, str]:
