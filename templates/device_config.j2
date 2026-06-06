@@ -31,6 +31,9 @@ interface Loopback0
  no shutdown
 !
 {% for interface in device.interfaces %}
+{% if interface.state == 'absent' %}
+no interface {{ interface.name }}
+{% else %}
 interface {{ interface.name }}
  description {{ interface.description }}
 {% if interface.vrf %}
@@ -48,6 +51,7 @@ interface {{ interface.name }}
  mpls traffic-eng tunnels
 {% endif %}
  no shutdown
+{% endif %}
 !
 {% endfor %}
 {% if device.te_tunnels %}
