@@ -1,0 +1,47 @@
+# --- Project Specifics ---
+# Ignore all rendered Cisco IOS configurations (Transient state)
+output/configs/*.cfg
+
+# --- Python ---
+# Byte-compiled / optimized / DLL files
+scripts/__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# --- IDEs & Editors ---
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# PyCharm / IntelliJ
+.idea/
+
+# --- Operating System ---
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Environment & Secrets ---
+# Never commit local environment variables
+.env
+.env.local
