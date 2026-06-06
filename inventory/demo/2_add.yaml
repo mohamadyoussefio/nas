@@ -1,0 +1,345 @@
+provider:
+  name: GNS3-SP
+  asn: 65000
+  ospf_process: 1
+  ldp_router_id: loopback0
+  vpnv4_route_reflectors: []
+  rsvp:
+    enabled: true
+    bandwidth: 75000
+  internet_vrf:
+    name: INTERNET
+    rd: "65000:99"
+    import_rts: ["65000:99"]
+    export_rts: ["65000:99"]
+  traffic_engineering:
+    router_ids: ["10.0.0.1", "10.0.0.4"]
+    tunnels:
+      - number: 1
+        name: TE-to-PE2
+        device: PE1
+        destination: 10.0.0.4
+        bandwidth: 5000
+        path_option:
+          value: 1
+          type: dynamic
+      - number: 1
+        name: TE-to-PE1
+        device: PE2
+        destination: 10.0.0.1
+        bandwidth: 5000
+        path_option:
+          value: 1
+          type: dynamic
+
+defaults:
+  device_type: cisco_ios
+  mgmt_username: admin
+  mgmt_password: admin
+
+gns3:
+  controller_url: http://127.0.0.1:3080
+  project_name: MPLS-VPN-AUTO-LAB
+  compute_id: local
+  boot_wait_seconds: 180
+  console_wait_seconds: 180
+  templates:
+    shared_router:
+      name: Cisco 7200 152-4.S5
+  nodes:
+    PE1:
+      template: shared_router
+      x: -600
+      y: -100
+    P1:
+      template: shared_router
+      x: -200
+      y: -100
+    P2:
+      template: shared_router
+      x: 200
+      y: -100
+    PE2:
+      template: shared_router
+      x: 600
+      y: -100
+    CE1A:
+      template: shared_router
+      x: -600
+      y: 220
+    CE2A:
+      template: shared_router
+      x: 600
+      y: 220
+    CE1B:
+      template: shared_router
+      x: -600
+      y: 440
+    CE2B:
+      template: shared_router
+      x: 600
+      y: 440
+  links:
+    - endpoints:
+        - device: PE1
+          adapter_number: 0
+          port_number: 0
+        - device: P1
+          adapter_number: 0
+          port_number: 0
+    - endpoints:
+        - device: P1
+          adapter_number: 1
+          port_number: 0
+        - device: P2
+          adapter_number: 0
+          port_number: 0
+    - endpoints:
+        - device: P2
+          adapter_number: 1
+          port_number: 0
+        - device: PE2
+          adapter_number: 0
+          port_number: 0
+    - endpoints:
+        - device: PE1
+          adapter_number: 1
+          port_number: 0
+        - device: CE1A
+          adapter_number: 0
+          port_number: 0
+    - endpoints:
+        - device: PE2
+          adapter_number: 1
+          port_number: 0
+        - device: CE2A
+          adapter_number: 0
+          port_number: 0
+    - endpoints:
+        - device: PE1
+          adapter_number: 1
+          port_number: 1
+        - device: CE1B
+          adapter_number: 0
+          port_number: 0
+    - endpoints:
+        - device: PE2
+          adapter_number: 1
+          port_number: 1
+        - device: CE2B
+          adapter_number: 0
+          port_number: 0
+
+devices:
+  PE1:
+    role: pe
+    hostname: PE1
+    router_id: 10.0.0.1
+    loopback0: 10.0.0.1/32
+    mgmt_ip: 10.254.0.11
+    interfaces:
+      - name: FastEthernet0/0
+        description: P2P to P1
+        ipv4: 10.0.12.1/30
+        ospf: true
+        mpls: true
+        rsvp: true
+      - name: FastEthernet1/0
+        description: Client_A site on PE1
+        ipv4: 192.168.10.1/30
+        vrf: Client_A
+      - name: FastEthernet1/1
+        description: Client_B site on PE1
+        ipv4: 192.168.20.1/30
+        vrf: Client_B
+
+  P1:
+    role: p
+    hostname: P1
+    router_id: 10.0.0.2
+    loopback0: 10.0.0.2/32
+    mgmt_ip: 10.254.0.12
+    interfaces:
+      - name: FastEthernet0/0
+        description: P2P to PE1
+        ipv4: 10.0.12.2/30
+        ospf: true
+        mpls: true
+        rsvp: true
+      - name: FastEthernet1/0
+        description: P2P to P2
+        ipv4: 10.0.23.1/30
+        ospf: true
+        mpls: true
+        rsvp: true
+
+  P2:
+    role: p
+    hostname: P2
+    router_id: 10.0.0.3
+    loopback0: 10.0.0.3/32
+    mgmt_ip: 10.254.0.13
+    interfaces:
+      - name: FastEthernet0/0
+        description: P2P to P1
+        ipv4: 10.0.23.2/30
+        ospf: true
+        mpls: true
+        rsvp: true
+      - name: FastEthernet1/0
+        description: P2P to PE2
+        ipv4: 10.0.34.1/30
+        ospf: true
+        mpls: true
+        rsvp: true
+
+  PE2:
+    role: pe
+    hostname: PE2
+    router_id: 10.0.0.4
+    loopback0: 10.0.0.4/32
+    mgmt_ip: 10.254.0.14
+    interfaces:
+      - name: FastEthernet0/0
+        description: P2P to P2
+        ipv4: 10.0.34.2/30
+        ospf: true
+        mpls: true
+        rsvp: true
+      - name: FastEthernet1/0
+        description: Client_A site on PE2
+        ipv4: 192.168.10.5/30
+        vrf: Client_A
+      - name: FastEthernet1/1
+        description: Client_B site on PE2
+        ipv4: 192.168.20.5/30
+        vrf: Client_B
+
+  CE1A:
+    role: ce
+    hostname: CE1A
+    customer: Client_A
+    asn: 65001
+    router_id: 172.16.1.1
+    loopback0: 172.16.1.1/32
+    mgmt_ip: 10.254.0.21
+    interfaces:
+      - name: FastEthernet0/0
+        description: To PE1
+        ipv4: 192.168.10.2/30
+      - name: Loopback1
+        description: Customer A Site 1 Loopback
+        ipv4: 172.16.1.2/32
+        advertise: true
+      - name: Loopback99
+        description: Phase 4.a Demo Add
+        ipv4: 9.9.9.9/32
+        advertise: true
+    bgp:
+      neighbors:
+        - ip: 192.168.10.1
+          asn: 65000
+
+  CE2A:
+    role: ce
+    hostname: CE2A
+    customer: Client_A
+    asn: 65001
+    router_id: 172.16.2.1
+    loopback0: 172.16.2.1/32
+    mgmt_ip: 10.254.0.22
+    interfaces:
+      - name: FastEthernet0/0
+        description: To PE2
+        ipv4: 192.168.10.6/30
+      - name: Loopback1
+        description: Customer A Site 2 Loopback
+        ipv4: 172.16.2.2/32
+        advertise: true
+    bgp:
+      neighbors:
+        - ip: 192.168.10.5
+          asn: 65000
+
+  CE1B:
+    role: ce
+    hostname: CE1B
+    customer: Client_B
+    asn: 65002
+    router_id: 172.16.3.1
+    loopback0: 172.16.3.1/32
+    mgmt_ip: 10.254.0.23
+    interfaces:
+      - name: FastEthernet0/0
+        description: To PE1
+        ipv4: 192.168.20.2/30
+      - name: Loopback1
+        description: Customer B Site 1 Loopback
+        ipv4: 172.16.3.2/32
+        advertise: true
+    bgp:
+      neighbors:
+        - ip: 192.168.20.1
+          asn: 65000
+
+  CE2B:
+    role: ce
+    hostname: CE2B
+    customer: Client_B
+    asn: 65002
+    router_id: 172.16.4.1
+    loopback0: 172.16.4.1/32
+    mgmt_ip: 10.254.0.24
+    interfaces:
+      - name: FastEthernet0/0
+        description: To PE2
+        ipv4: 192.168.20.6/30
+      - name: Loopback1
+        description: Customer B Site 2 Loopback
+        ipv4: 172.16.4.2/32
+        advertise: true
+    bgp:
+      neighbors:
+        - ip: 192.168.20.5
+          asn: 65000
+
+customers:
+  Client_A:
+    asn: 65001
+    vrf:
+      name: Client_A
+      rd: "65000:1"
+      import_rts:
+        - "65000:1"
+      export_rts:
+        - "65000:1"
+    sites:
+      - ce: CE1A
+        pe: PE1
+        pe_ce_link: 192.168.10.0/30
+      - ce: CE2A
+        pe: PE2
+        pe_ce_link: 192.168.10.4/30
+    internet_access: true
+
+  Client_B:
+    asn: 65002
+    vrf:
+      name: Client_B
+      rd: "65000:2"
+      import_rts:
+        - "65000:2"
+      export_rts:
+        - "65000:2"
+    sites:
+      - ce: CE1B
+        pe: PE1
+        pe_ce_link: 192.168.20.0/30
+      - ce: CE2B
+        pe: PE2
+        pe_ce_link: 192.168.20.4/30
+    internet_access: false
+
+traffic_engineering:
+  dual_homed_sites: []
+  policies: []
