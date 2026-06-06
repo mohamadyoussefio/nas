@@ -1,90 +1,101 @@
-# BGP/MPLS VPN Intent Automation
+# BGP/MPLS VPN Intent-Based Automation Framework
 
-This repository contains a Python-based intent renderer and deployment helper for a Cisco IOS GNS3 lab that provisions:
+[![Infrastructure: GNS3](https://img.shields.io/badge/Infrastructure-GNS3-blue.svg)](https://www.gns3.com/)
+[![Language: Python](https://img.shields.io/badge/Language-Python-yellow.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-- OSPF underlay
-- MPLS LDP
-- iBGP `vpnv4`
-- PE VRFs
-- PE-CE eBGP
-- Multi-RT site sharing scaffolding
-- Internet VRF scaffolding
-- Basic inbound traffic-engineering policy knobs for dual-homed sites
-- GNS3 topology creation and node placement through the GNS3 controller API
+## 1. Summary
 
-## Platform Model
+This framework provides an enterprise-grade Model-Driven Automation solution for provisioning and managing Carrier-Grade BGP/MPLS VPN backbones. By utilizing an Infrastructure-as-Code (IaC) methodology, the system automates the entire network lifecycle—from initial topology synchronization to advanced Traffic Engineering and multi-tenant service delivery.
 
-The project is now modeled for Cisco IOS on Dynamips 7200 routers in GNS3.
+---
 
-The sample intent assumes you create these GNS3 templates first:
+## 2. Design
 
-- `7200-P`: 2 FastEthernet ports
-- `7200-PE`: 4 FastEthernet ports
-- `7200-PE-BIG`: 5 or more FastEthernet ports
-- `7200-CE`: 2 FastEthernet ports
-- `7200-CE-DUAL`: 3 or more FastEthernet ports
+The framework is built upon a modular Model-Template-Execution architecture to ensure scalability and maintainability.
 
-A practical module layout is:
+### 2.1 The Data Model
+The central source of truth resides in `inventory/intent.yaml`. This declarative model defines the desired state of the network, including core infrastructure (P/PE routers), customer edge (CE) nodes, VRF definitions, RSVP-TE tunnel parameters, and shared service policies.
 
-- `7200-P` and `7200-CE`: `C7200-IO-2FE`
-- `7200-PE` and `7200-CE-DUAL`: `C7200-IO-2FE` plus one `PA-2FE-TX`
-- `7200-PE-BIG`: `C7200-IO-2FE` plus two `PA-2FE-TX`
+### 2.2 Configuration Blueprints
+Jinja2 templates located in `templates/device_config.j2` serve as the logical engine for generating vendor-specific configurations. These templates incorporate complex networking logic to transform abstract intent into syntactically correct Cisco IOS commands.
 
-The rendered configs therefore use `FastEthernet` interface names rather than `GigabitEthernet`.
+### 2.3 Orchestration Engine
+The Python-based logic in `scripts/` handles the enrichment of the data model, performs rigorous IP integrity validation, and interacts with the GNS3 REST API to manage the virtual environment.
 
-## Why these IP addresses?
+---
 
-The sample intent uses RFC1918 private address space with realistic service-provider-style conventions:
+## 3. Prerequisites
 
-- `/32` loopbacks from `10.255.0.0/24`
-- `/31` point-to-point links from `10.0.0.0/16`
-- customer LANs from `172.16.0.0/12`
+Successful deployment requires the Cisco 7200 router appliance within the GNS3 environment.
 
-This is safe for labs and avoids hijacking publicly assigned address space.
+*   **Appliance Download:** [Cisco 7200 Template](https://gns3.com/marketplace/appliances/cisco-7200)
+*   **Documentation:** [Cisco 7200 Installation Tutorial](https://gns3.com/marketplace/appliances/cisco-7200)
 
-## Layout
+### 3.1 Template Configuration Guidance
 
-- `inventory/intent.yaml`: topology and service intent
-- `scripts/render_and_deploy.py`: renderer and optional Netmiko deploy tool
-- `scripts/build_lab.py`: GNS3 project/topology builder plus optional deploy flow
-- `scripts/automation_lib.py`: shared render/validate/deploy helpers
-- `templates/device_config.j2`: Cisco IOS configuration template
-- `output/configs/`: rendered device configurations
+The following settings must be applied to the Cisco 7200 template to ensure full compatibility with the automation engine.
 
-## Quick start
+#### Figure 1: General Router Settings
+![General Router Settings](assets/router_settings_general.png)
 
+#### Figure 2: Memory and Disk Allocation
+![Memory and Disk Allocation](assets/router_settings_memories_and_disk.png)
+
+#### Figure 3: Interface Slot Configuration
+![Interface Slot Configuration](assets/router_settings_slots.png)
+
+---
+
+## 4. Operational Quick Start
+
+The system utilizes a unified `Makefile` to provide a simplified interface for complex orchestration tasks.
+
+### 4.1 Environment Initialization
+Prepare the Python virtual environment and install required dependencies:
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python3 scripts/render_and_deploy.py --intent inventory/intent.yaml --write-files
+make setup
 ```
 
-Rendered configs will be written to `output/configs/`.
-
-To build the GNS3 topology from intent:
-
+### 4.2 Full System Deployment
+Synchronize the GNS3 topology and deploy the comprehensive network configuration:
 ```bash
-python3 scripts/build_lab.py --intent inventory/intent.yaml --write-files --create
+make build
 ```
 
-To create, start, and then deploy configs through the GNS3 console:
-
+### 4.3 Lifecycle Management Demonstration
+Execute the automated demonstration of Add, Update, and Delete operations:
 ```bash
-python3 scripts/build_lab.py --intent inventory/intent.yaml --write-files --create --start --deploy
+make demo
 ```
 
-To push to devices:
+---
 
-```bash
-python3 scripts/render_and_deploy.py --intent inventory/intent.yaml --write-files --deploy
+## 5. Project Implementation Phases
+
+The project was developed through a rigorous engineering cycle consisting of six distinct phases:
+
+| Phase | Scope | Technical Components |
+| :--- | :--- | :--- |
+| Phase 0 | Network Underlay | OSPFv2, Loopback addressing, P2P IP allocation |
+| Phase 1 | MPLS Core | LDP Label Distribution, Label switching paths |
+| Phase 2 | VPN Control Plane | Multi-protocol iBGP, VPNv4 Address Family |
+| Phase 3 | Service Layer | VRF instantiation, eBGP PE-CE peering |
+| Phase 4.a | Manageability | Declarative deletion logic (`state: absent`), State synchronization |
+| Phase 4.b | Advanced Services | RSVP-TE, Shared Internet VRF, Ingress Path Steering |
+
+---
+
+## 6. Directory Structure
+
+```text
+├── inventory/      # Declarative Data Models
+├── scripts/        # Automation & Orchestration Logic
+├── templates/      # Jinja2 Configuration Blueprints
+├── assets/         # Technical Figures and Visual Guides
+├── output/         # Generated Production Configurations
+└── Makefile        # System Command Interface
 ```
 
-## Notes
-
-- The script defaults to rendering and validation first.
-- `scripts/build_lab.py --deploy` defaults to GNS3 console deployment, so a separate management network is not required.
-- `scripts/render_and_deploy.py --deploy` still uses Netmiko and therefore requires management IP reachability.
-- The generated configuration is additive and structured by feature blocks to keep ongoing management predictable.
-- GNS3 node creation requires matching template names to already exist on your GNS3 controller.
-- The sample `gns3.templates` section is Dynamips-specific and expects the template names listed in the platform model above.
+---
+**Technical documentation developed for the 3TC(A) NAS Project.**
