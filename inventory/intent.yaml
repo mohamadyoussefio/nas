@@ -5,11 +5,32 @@ provider:
   ldp_router_id: loopback0
   vpnv4_route_reflectors: []
   rsvp:
-    enabled: false
+    enabled: true
     bandwidth: 75000
+  internet_vrf:
+    name: INTERNET
+    rd: "65000:99"
+    import_rts: ["65000:99"]
+    export_rts: ["65000:99"]
   traffic_engineering:
-    router_ids: []
-    tunnels: []
+    router_ids: ["10.0.0.1", "10.0.0.4"]
+    tunnels:
+      - number: 1
+        name: TE-to-PE2
+        device: PE1
+        destination: 10.0.0.4
+        bandwidth: 5000
+        path_option:
+          value: 1
+          type: dynamic
+      - number: 1
+        name: TE-to-PE1
+        device: PE2
+        destination: 10.0.0.1
+        bandwidth: 5000
+        path_option:
+          value: 1
+          type: dynamic
 
 defaults:
   device_type: cisco_ios
@@ -20,44 +41,44 @@ gns3:
   controller_url: http://127.0.0.1:3080
   project_name: MPLS-VPN-AUTO-LAB
   compute_id: local
-  boot_wait_seconds: 180
-  console_wait_seconds: 180
+  boot_wait_seconds: 240
+  console_wait_seconds: 240
   templates:
     shared_router:
       name: Cisco 7200 152-4.S5
   nodes:
     PE1:
       template: shared_router
-      x: -600
-      y: -100
+      x: -300
+      y: 0
     P1:
       template: shared_router
-      x: -200
-      y: -100
+      x: -100
+      y: 0
     P2:
       template: shared_router
-      x: 200
-      y: -100
+      x: 100
+      y: 0
     PE2:
       template: shared_router
-      x: 600
-      y: -100
+      x: 300
+      y: 0
     CE1A:
       template: shared_router
-      x: -600
-      y: 220
-    CE2A:
-      template: shared_router
-      x: 600
-      y: 220
+      x: -500
+      y: -100
     CE1B:
       template: shared_router
-      x: -600
-      y: 440
+      x: -500
+      y: 100
+    CE2A:
+      template: shared_router
+      x: 500
+      y: -100
     CE2B:
       template: shared_router
-      x: 600
-      y: 440
+      x: 500
+      y: 100
   links:
     - endpoints:
         - device: PE1
@@ -122,6 +143,7 @@ devices:
         ipv4: 10.0.12.1/30
         ospf: true
         mpls: true
+        rsvp: true
       - name: FastEthernet1/0
         description: Client_A site on PE1
         ipv4: 192.168.10.1/30
@@ -143,11 +165,13 @@ devices:
         ipv4: 10.0.12.2/30
         ospf: true
         mpls: true
+        rsvp: true
       - name: FastEthernet1/0
         description: P2P to P2
         ipv4: 10.0.23.1/30
         ospf: true
         mpls: true
+        rsvp: true
 
   P2:
     role: p
@@ -161,11 +185,13 @@ devices:
         ipv4: 10.0.23.2/30
         ospf: true
         mpls: true
+        rsvp: true
       - name: FastEthernet1/0
         description: P2P to PE2
         ipv4: 10.0.34.1/30
         ospf: true
         mpls: true
+        rsvp: true
 
   PE2:
     role: pe
@@ -179,6 +205,7 @@ devices:
         ipv4: 10.0.34.2/30
         ospf: true
         mpls: true
+        rsvp: true
       - name: FastEthernet1/0
         description: Client_A site on PE2
         ipv4: 192.168.10.5/30
@@ -204,6 +231,10 @@ devices:
         description: Customer A Site 1 Loopback
         ipv4: 172.16.1.2/32
         advertise: true
+      - name: Loopback100
+        description: Shared Service Prefix (Primary on CE1A)
+        ipv4: 172.16.100.1/32
+        advertise: true
     bgp:
       neighbors:
         - ip: 192.168.10.1
@@ -225,10 +256,15 @@ devices:
         description: Customer A Site 2 Loopback
         ipv4: 172.16.2.2/32
         advertise: true
+      - name: Loopback100
+        description: Shared Service Prefix (Backup on CE2A)
+        ipv4: 172.16.100.1/32
+        advertise: true
     bgp:
       neighbors:
         - ip: 192.168.10.5
           asn: 65000
+          prepend_as_count: 3
 
   CE1B:
     role: ce
@@ -280,16 +316,20 @@ customers:
       rd: "65000:1"
       import_rts:
         - "65000:1"
+        - "65000:100"
       export_rts:
         - "65000:1"
+        - "65000:100"
     sites:
       - ce: CE1A
         pe: PE1
         pe_ce_link: 192.168.10.0/30
+        role: primary
       - ce: CE2A
         pe: PE2
         pe_ce_link: 192.168.10.4/30
-    internet_access: false
+        role: backup
+    internet_access: true
 
   Client_B:
     asn: 65002
@@ -298,8 +338,10 @@ customers:
       rd: "65000:2"
       import_rts:
         - "65000:2"
+        - "65000:100"
       export_rts:
         - "65000:2"
+        - "65000:100"
     sites:
       - ce: CE1B
         pe: PE1
