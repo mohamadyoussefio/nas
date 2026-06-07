@@ -20,7 +20,7 @@ Whether you are a student or a network engineer, this tool automates the complex
 
 ---
 
-## 🛠️ Step 1: Pre-Flight Checklist
+## 🛠️ Step 1: Checklist
 
 To ensure the automation works perfectly, you need the **Cisco 7200** template in GNS3.
 
@@ -55,7 +55,7 @@ Ensure GNS3 is open, then run this to build the entire 8-node network from scrat
 make build
 ```
 
-### **3. The "Magic" Demo**
+### **3. The Demo**
 Once the lab is running, see how the network adapts to changes (Add/Update/Delete) automatically.
 ```bash
 make demo
@@ -85,4 +85,4 @@ The framework follows a **Model-Driven** approach. You describe *what* you want 
 
 ---
 **Developed for the 3TC(A) NAS Project.**
-*Automating the complexity out of networking.*
+MY
