@@ -28,6 +28,8 @@ To ensure the automation works perfectly, you need the **Cisco 7200** template i
 2.  **Install:** Follow the [GNS3 Tutorial](https://gns3.com/marketplace/appliances/cisco-7200)
 3.  **Verify Settings:** Match your template to the figures below:
 
+> **Pro Tip:** When connecting to the router console for the first time, use `admin/admin` if prompted for a login.
+
 #### Figure 1: General Settings
 ![General Router Settings](assets/router_settings_general.png)
 
