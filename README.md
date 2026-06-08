@@ -31,13 +31,13 @@ To ensure the automation works perfectly, you need the **Cisco 7200** template i
 > **Pro Tip:** When connecting to the router console for the first time, use `admin/admin` if prompted for a login.
 
 #### Figure 1: General Settings
-![General Router Settings](assets/router_settings_general.png)
+<img src="assets/router_settings_general.png" alt="General Router Settings" width="500">
 
 #### Figure 2: Memories and Disk
-![Memory and Disk Allocation](assets/router_settings_memories_and_disk.png)
+<img src="assets/router_settings_memories_and_disk.png" alt="Memory and Disk Allocation" width="500">
 
 #### Figure 3: Slot Configuration
-![Interface Slot Configuration](assets/router_settings_slots.png)
+<img src="assets/router_settings_slots.png" alt="Interface Slot Configuration" width="500">
 
 ---
 
