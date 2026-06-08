@@ -55,39 +55,49 @@ class TelnetConsoleClient:
         start = time.time()
         output = ""
         while time.time() - start < wait_seconds:
-            data = self.sock.recv(4096).decode("ascii", errors="ignore")
-            output += data
-            if any(p in output for p in prompts):
-                return output
-            time.sleep(0.5)
+            try:
+                self.sock.setblocking(False)
+                try:
+                    data = self.sock.recv(4096).decode("ascii", errors="ignore")
+                    if data:
+                        output += data
+                except (BlockingIOError, socket.error):
+                    pass
+                
+                if any(p in output for p in prompts):
+                    return output
+                
+                time.sleep(0.1)
+            finally:
+                self.sock.setblocking(True)
+                
         raise TimeoutError(f"Did not receive prompt {prompts} from console {self.host}:{self.port}. Last output: {output[-400:]}")
 
     def expect_ready(self, wait_seconds: int = 300) -> None:
+        print(f"  Waiting for console to become ready...")
         start = time.time()
         while time.time() - start < wait_seconds:
-            self.send_line("")
+            self.sock.sendall(b"\r\n")
             try:
-                output = self.wait_for_prompt((">", "#", "yes/no", "initial configuration dialog", "Username:", "Password:"), wait_seconds=10.0)
+                output = self.wait_for_prompt((">", "#", "yes/no", "initial configuration dialog", "Username:", "Password:"), wait_seconds=5.0)
+                lowered = output.lower()
+                if "username:" in lowered:
+                    print("  Handling Username prompt...")
+                    self.sock.sendall(b"admin\r\n")
+                    time.sleep(1)
+                elif "password:" in lowered:
+                    print("  Handling Password prompt...")
+                    self.sock.sendall(b"admin\r\n")
+                    time.sleep(1)
+                elif "initial configuration dialog" in lowered or "[yes/no]" in lowered:
+                    print("  Bypassing configuration dialog...")
+                    self.sock.sendall(b"no\r\n")
+                    time.sleep(2)
+                elif ">" in output or "#" in output:
+                    return
             except TimeoutError:
-                continue
-            lowered = output.lower()
-            if "username:" in lowered:
-                self.send_line("admin")
-                continue
-            if "password:" in lowered:
-                self.send_line("admin")
-                continue
-            if "initial configuration dialog" in lowered or "[yes/no]" in lowered:
-                self.send_line("no")
-                continue
-            if "would you like to terminate autoinstall" in lowered:
-                self.send_line("yes")
-                continue
-            if "router>" in lowered or "router#" in lowered or "router(config" in lowered:
-                return
-            if ">" in output or "#" in output:
-                return
-            time.sleep(2)
+                pass
+            time.sleep(1)
         raise TimeoutError(f"Console {self.host}:{self.port} did not become ready in {wait_seconds} seconds")
 
     def run_commands(self, commands: list[str], save_config: bool = True) -> None:
