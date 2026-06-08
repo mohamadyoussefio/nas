@@ -62,12 +62,12 @@ class TelnetConsoleClient:
             time.sleep(0.5)
         raise TimeoutError(f"Did not receive prompt {prompts} from console {self.host}:{self.port}. Last output: {output[-400:]}")
 
-    def expect_ready(self, wait_seconds: int = 180) -> None:
+    def expect_ready(self, wait_seconds: int = 300) -> None:
         start = time.time()
         while time.time() - start < wait_seconds:
             self.send_line("")
             try:
-                output = self.wait_for_prompt((">", "#", "yes/no", "initial configuration dialog"), wait_seconds=5.0)
+                output = self.wait_for_prompt((">", "#", "yes/no", "initial configuration dialog"), wait_seconds=10.0)
             except TimeoutError:
                 continue
             lowered = output.lower()
@@ -85,24 +85,26 @@ class TelnetConsoleClient:
         raise TimeoutError(f"Console {self.host}:{self.port} did not become ready in {wait_seconds} seconds")
 
     def run_commands(self, commands: list[str], save_config: bool = True) -> None:
+        # Get to a known state (Privileged EXEC)
         self.send_line("")
-        self.wait_for_prompt((">", "#"), wait_seconds=30.0)
-        self.send_line("end")
-        self.wait_for_prompt(("#", ">"), wait_seconds=5.0)
-        self.send_line("enable")
-        self.wait_for_prompt(("#",), wait_seconds=5.0)
+        output = self.wait_for_prompt((">", "#"), wait_seconds=60.0)
+        if ">" in output:
+            self.send_line("enable")
+            self.wait_for_prompt(("#",), wait_seconds=10.0)
+        
         self.send_line("terminal length 0")
-        self.wait_for_prompt(("#",), wait_seconds=5.0)
+        self.wait_for_prompt(("#",), wait_seconds=10.0)
         self.send_line("configure terminal")
-        self.wait_for_prompt(("(config", "#"), wait_seconds=5.0)
+        self.wait_for_prompt(("(config", "#"), wait_seconds=10.0)
         for command in commands:
             if not command or command.strip() == "!" or command == "end":
                 continue
             self.send_line(command.strip())
-            time.sleep(0.5)
-            self.wait_for_prompt(("#", ">"), wait_seconds=10.0)
+            # For large configs, wait for each line to be processed
+            time.sleep(0.1)
+            self.wait_for_prompt(("#", ">"), wait_seconds=15.0)
         self.send_line("end")
-        self.wait_for_prompt(("#",), wait_seconds=5.0)
+        self.wait_for_prompt(("#",), wait_seconds=10.0)
         if save_config:
             self.send_line("write memory")
             self.wait_for_prompt(("#", "[ok]"), wait_seconds=60.0)
@@ -146,14 +148,40 @@ def ensure_nodes(client: GNS3Client, project_id: str, gns3_intent: dict[str, Any
         template = templates.get(template_name)
         if not template:
             raise ValueError(f"Template '{template_name}' not found in GNS3")
-        node = client.request("POST", f"/projects/{project_id}/nodes", json={
+        
+        print(f"Creating node: {name} using template: {template_name}")
+        node_type = template.get("node_type") or template.get("template_type")
+        payload = {
             "name": name,
-            "node_type": template["node_type"],
-            "compute_id": gns3_intent.get("compute_id", "local"),
+            "node_type": node_type,
             "x": node_data["x"],
             "y": node_data["y"],
-            "template_id": template["template_id"]
-        })
+            "template_id": template["template_id"],
+            "compute_id": gns3_intent.get("compute_id", "local"),
+            "symbol": template.get("symbol")
+        }
+
+        # Dynamips nodes require specific properties to be nested
+        if node_type == "dynamips":
+            properties = {}
+            dynamips_fields = {
+                "platform", "nvram", "ram", "slot0", "slot1", "slot2", "slot3", 
+                "idlepc", "idlesleep", "idlemax", "mmap", "sparsemem", 
+                "midplane", "npe", "image", "system_id", "disk0", "disk1",
+                "auto_delete_disks", "exec_area"
+            }
+            for field in dynamips_fields:
+                if field in template:
+                    properties[field] = template[field]
+            payload["properties"] = properties
+        
+        node = client.request("POST", f"/projects/{project_id}/nodes", json=payload)
+        
+        # Ensure the name is exactly what we requested (GNS3 sometimes defaults to R1, R2...)
+        if node.get("name") != name:
+            print(f"Node created as {node.get('name')}, renaming to {name}...")
+            node = client.request("PUT", f"/projects/{project_id}/nodes/{node['node_id']}", json={"name": name})
+            
         node_name_to_id[name] = node["node_id"]
 
     return node_name_to_id
