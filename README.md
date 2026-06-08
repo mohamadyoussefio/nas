@@ -86,5 +86,5 @@ The framework follows a **Model-Driven** approach. You describe *what* you want 
 *   `output/` - Where the final production-ready configs are saved.
 
 ---
-**Developed for the 3TC(A) NAS Project.**
+**Developed for the 3TC NAS Project.**
 MY
