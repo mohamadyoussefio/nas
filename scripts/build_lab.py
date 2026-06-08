@@ -67,10 +67,16 @@ class TelnetConsoleClient:
         while time.time() - start < wait_seconds:
             self.send_line("")
             try:
-                output = self.wait_for_prompt((">", "#", "yes/no", "initial configuration dialog"), wait_seconds=10.0)
+                output = self.wait_for_prompt((">", "#", "yes/no", "initial configuration dialog", "Username:", "Password:"), wait_seconds=10.0)
             except TimeoutError:
                 continue
             lowered = output.lower()
+            if "username:" in lowered:
+                self.send_line("admin")
+                continue
+            if "password:" in lowered:
+                self.send_line("admin")
+                continue
             if "initial configuration dialog" in lowered or "[yes/no]" in lowered:
                 self.send_line("no")
                 continue

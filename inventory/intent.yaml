@@ -231,10 +231,6 @@ devices:
         description: Customer A Site 1 Loopback
         ipv4: 172.16.1.2/32
         advertise: true
-      - name: Loopback100
-        description: Shared Service Prefix (Primary on CE1A)
-        ipv4: 172.16.100.1/32
-        advertise: true
     bgp:
       neighbors:
         - ip: 192.168.10.1
@@ -255,10 +251,6 @@ devices:
       - name: Loopback1
         description: Customer A Site 2 Loopback
         ipv4: 172.16.2.2/32
-        advertise: true
-      - name: Loopback100
-        description: Shared Service Prefix (Backup on CE2A)
-        ipv4: 172.16.100.1/32
         advertise: true
     bgp:
       neighbors:
@@ -316,10 +308,8 @@ customers:
       rd: "65000:1"
       import_rts:
         - "65000:1"
-        - "65000:100"
       export_rts:
         - "65000:1"
-        - "65000:100"
     sites:
       - ce: CE1A
         pe: PE1
@@ -338,10 +328,8 @@ customers:
       rd: "65000:2"
       import_rts:
         - "65000:2"
-        - "65000:100"
       export_rts:
         - "65000:2"
-        - "65000:100"
     sites:
       - ce: CE1B
         pe: PE1
