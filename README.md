@@ -65,7 +65,7 @@ make demo
 
 ---
 
-## 📐 How it Works (The "Boring" Tech Stuff)
+## 📐 How it Works (The Boring Stuff)
 
 The framework follows a **Model-Driven** approach. You describe *what* you want in a simple YAML file, and the engine handles the *how*.
 
