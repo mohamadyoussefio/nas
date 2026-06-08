@@ -45,6 +45,12 @@ To ensure the automation works perfectly, you need the **Cisco 7200** template i
 
 We've provided a `Makefile` to handle all the "boring" parts. Just run these commands in your terminal:
 
+### **0. Get the Code**
+Clone the repository and enter the project folder:
+```bash
+git clone https://github.com/mohamadyoussefio/nas.git && cd nas
+```
+
 ### **1. Prepare your machine**
 This creates a virtual environment and installs all the Python "brains."
 ```bash
