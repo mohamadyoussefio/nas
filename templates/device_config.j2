@@ -1,6 +1,13 @@
 hostname {{ device.hostname }}
 no ip domain-lookup
 ip cef
+!
+username admin privilege 15 password admin
+aaa new-model
+aaa authentication login default local
+aaa authorization exec default local
+ip scp server enable
+!
 {% if device.role in ["p", "pe"] %}
 mpls label protocol ldp
 mpls ldp router-id Loopback0 force
@@ -8,8 +15,8 @@ mpls ldp router-id Loopback0 force
 mpls traffic-eng tunnels
 ip rsvp signalling hello
 {% endif %}
-{% endif %}
 !
+{% endif %}
 {% if device.role == "pe" and device.vrfs %}
 {% for vrf in device.vrfs %}
 {% if vrf.state == 'absent' %}
@@ -26,10 +33,17 @@ ip vrf {{ vrf.name }}
 {% endif %}
 !
 {% endfor %}
+{% for vrf in device.vrfs %}
+{% if vrf.name == "INTERNET" %}
+ip route vrf INTERNET 0.0.0.0 0.0.0.0 Null0
+{% endif %}
+{% endfor %}
+!
 {% endif %}
 interface Loopback0
  ip address {{ device.loopback0.ip }} {{ device.loopback0.mask }}
 {% if device.role in ["p", "pe"] %}
+ ip ospf network point-to-point
  ip ospf {{ provider.ospf_process }} area 0
 {% endif %}
  no shutdown
@@ -45,6 +59,7 @@ interface {{ interface.name }}
 {% endif %}
  ip address {{ interface.ip }} {{ interface.mask }}
 {% if interface.ospf %}
+ ip ospf network point-to-point
  ip ospf {{ provider.ospf_process }} area 0
 {% endif %}
 {% if interface.mpls %}
@@ -91,6 +106,9 @@ route-map {{ route_map.name }} permit {{ route_map.sequence }}
 {% if route_map.set_med %}
  set metric {{ route_map.set_med }}
 {% endif %}
+{% if route_map.set_as_path_prepend %}
+ set as-path prepend {{ route_map.set_as_path_prepend }}
+{% endif %}
 !
 {% endfor %}
 {% endif %}
@@ -123,12 +141,16 @@ router bgp {{ provider.asn }}
 {% for vrf in device.vrfs %}
  !
  address-family ipv4 vrf {{ vrf.name }}
+{% if vrf.name == "INTERNET" %}
+  network 0.0.0.0 mask 0.0.0.0
+{% endif %}
 {% for peer in vrf.ce_neighbors %}
 {% if peer.state == 'absent' %}
   no neighbor {{ peer.ip }}
 {% else %}
   neighbor {{ peer.ip }} remote-as {{ peer.asn }}
   neighbor {{ peer.ip }} activate
+  neighbor {{ peer.ip }} as-override
 {% if peer.route_map_in %}
   neighbor {{ peer.ip }} route-map {{ peer.route_map_in }} in
 {% endif %}
@@ -153,6 +175,9 @@ router bgp {{ device.asn }}
  address-family ipv4
 {% for neighbor in device.bgp.neighbors %}
   neighbor {{ neighbor.ip }} activate
+{% if neighbor.route_map_out %}
+  neighbor {{ neighbor.ip }} route-map {{ neighbor.route_map_out }} out
+{% endif %}
 {% endfor %}
 {% for network in device.advertised_networks %}
   network {{ network.network }} mask {{ network.mask }}
