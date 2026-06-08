@@ -151,6 +151,7 @@ def ensure_nodes(client: GNS3Client, project_id: str, gns3_intent: dict[str, Any
         
         print(f"Creating node: {name} using template: {template_name}")
         node_type = template.get("node_type") or template.get("template_type")
+        print(f"  Detected node type: {node_type}")
         payload = {
             "name": name,
             "node_type": node_type,
