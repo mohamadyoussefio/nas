@@ -202,12 +202,14 @@ def ensure_links(client: GNS3Client, project_id: str, nodes: dict[str, str], gns
                 link_exists = True
                 break
         if not link_exists:
+            print(f"Connecting {endpoints[0]['device']} to {endpoints[1]['device']}...")
             client.request("POST", f"/projects/{project_id}/links", json={
                 "nodes": [
                     {"node_id": node_a_id, "adapter_number": endpoints[0]["adapter_number"], "port_number": endpoints[0]["port_number"]},
                     {"node_id": node_b_id, "adapter_number": endpoints[1]["adapter_number"], "port_number": endpoints[1]["port_number"]}
                 ]
             })
+            time.sleep(0.2) # small delay to be safe
 
 
 def start_nodes(client: GNS3Client, project_id: str) -> None:
