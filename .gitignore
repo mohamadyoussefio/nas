@@ -1,6 +1,7 @@
 # --- Project Specifics ---
 # Ignore all rendered Cisco IOS configurations (Transient state)
 output/configs/*.cfg
+GEMINI.md
 
 # --- Python ---
 # Byte-compiled / optimized / DLL files
